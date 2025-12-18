@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
-import * as CryptoJS from "crypto-js";
 import type { StoredWalletData, WalletInfo } from "../../types";
 import { AVALANCHE_RPC } from "../../constants";
 import type { LogFn } from "../core/logger";
+import { decryptPrivateKey } from "../../helpers/secureCrypto";
 
 export async function unlockAndInitializeWallet(
   userPassword: string,
@@ -16,11 +16,10 @@ export async function unlockAndInitializeWallet(
   const walletData: StoredWalletData = data.walletData;
 
   try {
-    const bytes = CryptoJS.AES.decrypt(
+    const privateKey = await decryptPrivateKey(
       walletData.encryptedPrivateKey,
       userPassword
     );
-    const privateKey = bytes.toString(CryptoJS.enc.Utf8);
 
     if (!privateKey) {
       throw new Error("Invalid password.");
@@ -40,4 +39,3 @@ export async function unlockAndInitializeWallet(
     throw new Error("Invalid password.");
   }
 }
-
