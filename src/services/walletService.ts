@@ -1,12 +1,10 @@
 import { ethers } from 'ethers';
-import CryptoJS from 'crypto-js';
-
-
+import { encryptPrivateKey, decryptPrivateKey, EncryptedPayload } from "../helpers/secureCrypto";
 
 // Interface for wallet data
 export interface WalletData {
   address: string;
-  encryptedPrivateKey: string;
+  encryptedPrivateKey: EncryptedPayload;
 }
 
 // Create a new wallet
@@ -44,30 +42,38 @@ export const importWalletFromMnemonic = async (phrase: string): Promise<ethers.H
 };
 
 // Encrypt wallet with password
-export const encryptWallet = (wallet: ethers.HDNodeWallet | ethers.Wallet, password: string): WalletData => {
+export const encryptWallet = async (
+  wallet: ethers.HDNodeWallet | ethers.Wallet,
+  password: string
+): Promise<WalletData> => {
   const privateKey = wallet.privateKey;
-  const encryptedPrivateKey = CryptoJS.AES.encrypt(privateKey, password).toString();
-  
+  const encryptedPrivateKey = await encryptPrivateKey(privateKey, password);
+
   return {
     address: wallet.address,
-    encryptedPrivateKey
+    encryptedPrivateKey,
   };
 };
 
 // Decrypt wallet with password
-export const decryptWallet = (walletData: WalletData, password: string): ethers.HDNodeWallet | ethers.Wallet => {
+export const decryptWallet = async (
+  walletData: WalletData,
+  password: string
+): Promise<ethers.HDNodeWallet | ethers.Wallet> => {
   try {
-    const decryptedBytes = CryptoJS.AES.decrypt(walletData.encryptedPrivateKey, password);
-    const privateKey = decryptedBytes.toString(CryptoJS.enc.Utf8);
-    
+    const privateKey = await decryptPrivateKey(
+      walletData.encryptedPrivateKey,
+      password
+    );
+
     if (!privateKey) {
-      throw new Error('Incorrect password');
+      throw new Error("Incorrect password");
     }
-    
+
     return new ethers.Wallet(privateKey);
   } catch (error) {
-    console.error('Failed to decrypt wallet:', error);
-    throw new Error('Incorrect password');
+    console.error("Failed to decrypt wallet:", error);
+    throw new Error("Incorrect password");
   }
 };
 
@@ -82,30 +88,9 @@ export const getWallet = async (): Promise<WalletData | null> => {
   return result.walletData || null;
 };
 
-// Save password hash to storage
-export const savePasswordHash = async (password: string): Promise<void> => {
-  // Create a hash of the password, not the password itself
-  const passwordHash = CryptoJS.SHA256(password).toString();
-  await chrome.storage.local.set({ password: passwordHash });
-};
-
-// Verify password against stored hash
-export const verifyPassword = async (password: string): Promise<boolean> => {
-  const result = await chrome.storage.local.get(['password']);
-  const storedHash = result.password;
-  
-  if (!storedHash) {
-    return false;
-  }
-  
-  const inputHash = CryptoJS.SHA256(password).toString();
-  return inputHash === storedHash;
-};
-
 // Check if wallet is set up
 export const isWalletSetup = async (): Promise<boolean> => {
-  const result = await chrome.storage.local.get(['walletData', 'password']);
-  return !!(result.walletData && result.password);
+  const result = await chrome.storage.local.get(['walletData']);
+  return !!result.walletData;
 };
-
 

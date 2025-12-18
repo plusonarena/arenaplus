@@ -1,8 +1,12 @@
 import { useState, useCallback } from "react";
 import { ethers } from "ethers";
-import { WalletInfo, TokenInfo, StoredWalletData } from "../types";
+import {
+  WalletInfo,
+  TokenInfo,
+  StoredWalletData,
+} from "../types";
 import { AVALANCHE_RPC, TOKENS_MAP, PLUS_TOKEN, TOKENS } from "../constants";
-import * as CryptoJS from "crypto-js";
+import { encryptPrivateKey } from "../helpers/secureCrypto";
 
 export const useWallet = () => {
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
@@ -104,26 +108,17 @@ export const useWallet = () => {
   const storeWallet = useCallback(
     async (privateKey: string, address: string, userPassword: string) => {
       try {
-        const encryptedPrivateKey = CryptoJS.AES.encrypt(
+        const encryptedPrivateKey = await encryptPrivateKey(
           privateKey,
           userPassword
-        ).toString();
-
-        const hashedPassword = await crypto.subtle
-          .digest("SHA-256", new TextEncoder().encode(userPassword))
-          .then((hash) => Array.from(new Uint8Array(hash)));
+        );
 
         const walletData: StoredWalletData = {
-          encryptedPrivateKey: encryptedPrivateKey,
+          encryptedPrivateKey,
           address,
-          hashedPassword: hashedPassword.join(","),
         };
 
         await chrome.storage.local.set({ walletData });
-
-        await chrome.storage.local.set({
-          password: CryptoJS.SHA256(userPassword).toString(),
-        });
       } catch (err) {
         console.error("Error storing wallet:", err);
         throw err;

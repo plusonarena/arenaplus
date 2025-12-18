@@ -109,7 +109,6 @@ async function handleLike(e: MouseEvent) {
       amount: tipAmount,
       tokenAddress: TOKENS_MAP[tipToken].address,
       tokenSymbol: tipToken,
-      skipWalletApproval: true,
       source: "CASH_MACHINE",
       recipientHandle: handle,
     },

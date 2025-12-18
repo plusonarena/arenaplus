@@ -7,6 +7,12 @@ export interface WalletInfo {
   provider?: ethers.Provider;
 }
 
+export interface EncryptedPayload {
+  salt: number[];
+  iv: number[];
+  ciphertext: number[];
+}
+
 export interface TokenInfo {
   balance: string;
   symbol: string;
@@ -20,7 +26,6 @@ export interface TokensInfo {
 }
 
 export interface StoredWalletData {
-  encryptedPrivateKey: string;
+  encryptedPrivateKey: EncryptedPayload;
   address: string;
-  hashedPassword: string;
 }

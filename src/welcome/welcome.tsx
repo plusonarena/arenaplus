@@ -8,7 +8,6 @@ import {
   importWalletFromMnemonic,
   encryptWallet,
   saveWallet,
-  savePasswordHash,
   isWalletSetup,
 } from "../services/walletService";
 import { Eye, EyeOff, Copy, Check, ArrowUpRight } from "lucide-react";
@@ -133,9 +132,8 @@ function Welcome() {
     setError("");
     // Persist only now (after successful verification)
     try {
-      const encryptedWallet = encryptWallet(wallet as any, password);
+      const encryptedWallet = await encryptWallet(wallet as any, password);
       await saveWallet(encryptedWallet);
-      await savePasswordHash(password);
       setSetupComplete(true);
     } catch (err) {
       setError("Failed to save wallet. Please try again.");
@@ -243,9 +241,8 @@ function Welcome() {
       setWallet(importedWallet);
 
       // Encrypt and save wallet
-      const encryptedWallet = encryptWallet(importedWallet, password);
+      const encryptedWallet = await encryptWallet(importedWallet, password);
       await saveWallet(encryptedWallet);
-      await savePasswordHash(password);
 
       setSetupMessage("Wallet imported successfully!");
       setSetupComplete(true);

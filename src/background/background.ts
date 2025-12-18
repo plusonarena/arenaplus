@@ -33,6 +33,25 @@ const formatAddressShort = (address?: string) => {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
+const isTrustedSender = (sender: chrome.runtime.MessageSender) => {
+  if (sender.id && chrome.runtime?.id && sender.id === chrome.runtime.id) {
+    return true;
+  }
+
+  const origin =
+    sender.origin ||
+    sender.url ||
+    sender.tab?.url ||
+    sender.documentId ||
+    "";
+
+  return typeof origin === "string"
+    ? origin.startsWith("https://arena.social") ||
+        origin.startsWith("https://www.x.com") ||
+        origin.startsWith("https://x.com")
+    : false;
+};
+
 async function executeSendTip(message: any) {
   if (!isUnlocked || !inMemoryWallet) {
     return { success: false, error: "Wallet is locked." };
@@ -805,23 +824,8 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Listener to intercept network requests and capture the bearer token
-chrome.webRequest.onBeforeSendHeaders.addListener(
-  (details) => {
-    const authHeader = details.requestHeaders?.find(
-      (header) => header.name.toLowerCase() === "authorization"
-    );
-
-    if (authHeader && authHeader.value) {
-      const token = authHeader.value.replace("Bearer ", "");
-      chrome.storage.local.set({ bearerToken: token }, () => {
-        logBackground("Bearer token captured and stored.");
-      });
-    }
-  },
-  { urls: [(import.meta.env.VITE_STARS_ARENA_API_URL || "https://api.starsarena.com") + "/*"] },
-  ["requestHeaders", "extraHeaders"]
-);
+// NOTE: Previous bearer-token interception has been removed to avoid capturing
+// and persisting sensitive auth headers.
 
 // Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1121,24 +1125,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       return true; // Required for async response
 
-    case "SEND_TIP":
-      const { amount, tokenSymbol, recipientHandle, toAddress, skipWalletApproval } =
-        message;
-
-      if (skipWalletApproval) {
-        (async () => {
-          try {
-            const result = await executeSendTip(message);
-            sendResponse(result);
-          } catch (err: any) {
-            sendResponse({
-              success: false,
-              error: err?.message || "Failed to send tip",
-            });
-          }
-        })();
-        return true;
+    case "SEND_TIP": {
+      if (!isTrustedSender(sender)) {
+        sendResponse({ success: false, error: "Unauthorized sender" });
+        return false;
       }
+
+      const { amount, tokenSymbol, recipientHandle, toAddress } = message;
 
       walletActions.enqueue(
         {
@@ -1153,6 +1146,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
       return true;
+    }
 
     case "REQUEST_TIP_SHOWER_APPROVAL":
       const payload = message.payload || {};
@@ -2120,45 +2114,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           let followerCount = Number(message.payload?.followerCount ?? NaN);
           if (Number.isNaN(followerCount)) {
             logBackground(
-              "Frontend did not provide followerCount; fetching for:",
-              twitterUsername
+              "Frontend did not provide followerCount; using safe fallback."
             );
             followerCount = 100; // fallback
-            try {
-              const tokenResult = await new Promise<{ bearerToken?: string }>(
-                (resolve) => {
-                  chrome.storage.local.get(["bearerToken"], resolve);
-                }
-              );
-              if (tokenResult.bearerToken) {
-                const followerResponse = await fetch(
-                  `${import.meta.env.VITE_STARS_ARENA_API_URL || "https://api.starsarena.com"}/user/handle?handle=${twitterUsername}`,
-                  {
-                    headers: {
-                      Authorization: `Bearer ${tokenResult.bearerToken}`,
-                    },
-                  }
-                );
-                if (followerResponse.ok) {
-                  const userData = await followerResponse.json();
-                  followerCount = userData.user?.followerCount || 100;
-                  logBackground("Fetched actual follower count:", followerCount);
-                } else {
-                  logBackground(
-                    "Failed to fetch follower count, using fallback:",
-                    followerCount
-                  );
-                }
-              } else {
-                logBackground(
-                  "No bearer token found, using fallback follower count:",
-                  followerCount
-                );
-              }
-            } catch (error) {
-              logBackground("Error fetching follower count:", error);
-              logBackground("Using fallback follower count:", followerCount);
-            }
           } else {
             logBackground(
               "Using followerCount provided by frontend:",
@@ -2391,9 +2349,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "GET_BEARER_TOKEN":
       const respondWithToken = (token: string | null) => {
         if (token) {
-          chrome.storage.local.set({ bearerToken: token }, () => {
-            sendResponse({ token });
-          });
+          sendResponse({ token });
         } else {
           sendResponse({
             error:
@@ -2422,20 +2378,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               return;
             }
 
-            chrome.storage.local.get("bearerToken", (result) => {
-              if (chrome.runtime.lastError) {
-                logBackground(
-                  "Error retrieving bearer token from storage:",
-                  chrome.runtime.lastError
-                );
-              }
-
-              if (result?.bearerToken) {
-                sendResponse({ token: result.bearerToken });
-              } else {
-                respondWithToken(null);
-              }
-            });
+            respondWithToken(null);
           }
         );
       } catch (err) {
